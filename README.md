@@ -6,6 +6,8 @@ This repository contains a banking application for the Software Development Test
 
 Please see [CHALLENGE.md](./CHALLENGE.md) for complete instructions and requirements.
 
+Please find the Bug Fixes Report at [Bug Fixes](./docs/bug-report.md).
+
 ## 🚀 Quick Start
 
 ```bash
