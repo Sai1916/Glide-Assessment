@@ -21,6 +21,41 @@ type SignupFormData = {
   zipCode: string;
 };
 
+const calculateAge = (birthDate: string): number => {
+  const today = new Date();
+  const birth = new Date(birthDate);
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+    age--;
+  }
+  return age;
+};
+
+const VALID_US_STATES = [
+  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
+  "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
+  "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+  "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
+  "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+  "DC", "AS", "GU", "MP", "PR", "UM", "VI"
+];
+
+const validatePhoneNumber = (value: string): boolean => {
+  // Remove common formatting characters
+  const cleaned = value.replace(/[\s\-()]/g, "");
+  // Check if it's exactly 10 digits (US phone number)
+  return /^\d{10}$/.test(cleaned);
+};
+
+const formatPhoneNumber = (value: string): string => {
+  const cleaned = value.replace(/[\D]/g, "");
+  if (cleaned.length >= 10) {
+    return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6, 10)}`;
+  }
+  return value;
+};
+
 export default function SignupPage() {
   const router = useRouter();
   const [step, setStep] = useState(1);
@@ -65,36 +100,52 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50 dark:bg-black flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">Create your account</h2>
-          <p className="mt-2 text-center text-sm text-gray-600">Step {step} of 3</p>
+          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900 dark:text-white">Create your account</h2>
+          <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">Step {step} of 3</p>
         </div>
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit(onSubmit)}>
           {step === 1 && (
             <div className="space-y-4">
               <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Email
                 </label>
                 <input
                   {...register("email", {
                     required: "Email is required",
                     pattern: {
-                      value: /^\S+@\S+$/i,
-                      message: "Invalid email address",
+                      value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
+                      message: "Invalid email address format",
                     },
+                    validate: {
+                      validDomain: (value) => {
+                        // Check for common typos
+                        if (/\.(con|cmo|xom|co|cm)$/i.test(value)) {
+                          return "Did you mean .com?";
+                        }
+                        return true;
+                      },
+                      // Detect if user entered uppercase and suggest lowercase
+                      normalizeCase: (value) => {
+                        if (value !== value.toLowerCase()) {
+                          return "Email will be converted to lowercase: " + value.toLowerCase();
+                        }
+                        return true;
+                      },
+                    }
                   })}
                   type="email"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 />
-                {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>}
+                {errors.email && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.email.message}</p>}
               </div>
 
               <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Password
                 </label>
                 <input
@@ -106,20 +157,24 @@ export default function SignupPage() {
                     },
                     validate: {
                       notCommon: (value) => {
-                        const commonPasswords = ["password", "12345678", "qwerty"];
+                        const commonPasswords = ["password", "12345678", "qwerty", "password123", "admin123"];
                         return !commonPasswords.includes(value.toLowerCase()) || "Password is too common";
                       },
-                      hasNumber: (value) => /\d/.test(value) || "Password must contain a number",
+                      hasNumber: (value) => /\d/.test(value) || "Password must contain at least one number",
+                      hasUpperCase: (value) => /[A-Z]/.test(value) || "Password must contain at least one uppercase letter",
+                      hasLowerCase: (value) => /[a-z]/.test(value) || "Password must contain at least one lowercase letter",
+                      hasSpecialChar: (value) => /[!@#$%^&*(),.?":{}|<>]/.test(value) || "Password must contain at least one special character (!@#$%^&*)",
                     },
                   })}
                   type="password"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 />
-                {errors.password && <p className="mt-1 text-sm text-red-600">{errors.password.message}</p>}
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Must include: uppercase, lowercase, number, and special character</p>
+                {errors.password && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.password.message}</p>}
               </div>
 
               <div>
-                <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Confirm Password
                 </label>
                 <input
@@ -128,10 +183,10 @@ export default function SignupPage() {
                     validate: (value) => value === password || "Passwords do not match",
                   })}
                   type="password"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 />
                 {errors.confirmPassword && (
-                  <p className="mt-1 text-sm text-red-600">{errors.confirmPassword.message}</p>
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.confirmPassword.message}</p>
                 )}
               </div>
             </div>
@@ -141,59 +196,81 @@ export default function SignupPage() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">
+                  <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                     First Name
                   </label>
                   <input
                     {...register("firstName", { required: "First name is required" })}
                     type="text"
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                   />
-                  {errors.firstName && <p className="mt-1 text-sm text-red-600">{errors.firstName.message}</p>}
+                  {errors.firstName && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.firstName.message}</p>}
                 </div>
 
                 <div>
-                  <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">
+                  <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                     Last Name
                   </label>
                   <input
                     {...register("lastName", { required: "Last name is required" })}
                     type="text"
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                   />
-                  {errors.lastName && <p className="mt-1 text-sm text-red-600">{errors.lastName.message}</p>}
+                  {errors.lastName && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.lastName.message}</p>}
                 </div>
               </div>
 
               <div>
-                <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Phone Number
                 </label>
                 <input
                   {...register("phoneNumber", {
                     required: "Phone number is required",
-                    pattern: {
-                      value: /^\d{10}$/,
-                      message: "Phone number must be 10 digits",
+                    validate: {
+                      validFormat: (value) => {
+                        return validatePhoneNumber(value) || "Phone number must be 10 digits (US only)";
+                      },
+                      notAllZeros: (value) => {
+                        const cleaned = value.replace(/\D/g, "");
+                        return cleaned !== "0000000000" || "Invalid phone number";
+                      },
                     },
                   })}
                   type="tel"
-                  placeholder="1234567890"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+                  placeholder="(123) 456-7890"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 />
-                {errors.phoneNumber && <p className="mt-1 text-sm text-red-600">{errors.phoneNumber.message}</p>}
+                {errors.phoneNumber && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.phoneNumber.message}</p>}
               </div>
 
               <div>
-                <label htmlFor="dateOfBirth" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="dateOfBirth" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Date of Birth
                 </label>
                 <input
-                  {...register("dateOfBirth", { required: "Date of birth is required" })}
+                  {...register("dateOfBirth", {
+                    required: "Date of birth is required",
+                    validate: {
+                      notFuture: (value) => {
+                        const birthDate = new Date(value);
+                        const today = new Date();
+                        return birthDate <= today || "Date of birth cannot be in the future";
+                      },
+                      isLegalAge: (value) => {
+                        const age = calculateAge(value);
+                        return age >= 18 || "You must be at least 18 years old to open an account";
+                      },
+                      reasonableAge: (value) => {
+                        const age = calculateAge(value);
+                        return age <= 120 || "Please enter a valid date of birth";
+                      },
+                    },
+                  })}
                   type="date"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 />
-                {errors.dateOfBirth && <p className="mt-1 text-sm text-red-600">{errors.dateOfBirth.message}</p>}
+                {errors.dateOfBirth && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.dateOfBirth.message}</p>}
               </div>
             </div>
           )}
@@ -201,9 +278,12 @@ export default function SignupPage() {
           {step === 3 && (
             <div className="space-y-4">
               <div>
-                <label htmlFor="ssn" className="block text-sm font-medium text-gray-700">
-                  Social Security Number
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label htmlFor="ssn" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Social Security Number
+                  </label>
+                  <span className="text-xs text-yellow-600 dark:text-yellow-400">🔒 Encrypted</span>
+                </div>
                 <input
                   {...register("ssn", {
                     required: "SSN is required",
@@ -212,40 +292,41 @@ export default function SignupPage() {
                       message: "SSN must be 9 digits",
                     },
                   })}
-                  type="text"
-                  placeholder="123456789"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+                  type="password"
+                  placeholder="•••••••••"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 />
-                {errors.ssn && <p className="mt-1 text-sm text-red-600">{errors.ssn.message}</p>}
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Your SSN will be encrypted and securely stored. Never share this information.</p>
+                {errors.ssn && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.ssn.message}</p>}
               </div>
 
               <div>
-                <label htmlFor="address" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="address" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Street Address
                 </label>
                 <input
                   {...register("address", { required: "Address is required" })}
                   type="text"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 />
-                {errors.address && <p className="mt-1 text-sm text-red-600">{errors.address.message}</p>}
+                {errors.address && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.address.message}</p>}
               </div>
 
               <div className="grid grid-cols-6 gap-4">
                 <div className="col-span-3">
-                  <label htmlFor="city" className="block text-sm font-medium text-gray-700">
+                  <label htmlFor="city" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                     City
                   </label>
                   <input
                     {...register("city", { required: "City is required" })}
                     type="text"
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                   />
-                  {errors.city && <p className="mt-1 text-sm text-red-600">{errors.city.message}</p>}
+                  {errors.city && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.city.message}</p>}
                 </div>
 
                 <div className="col-span-1">
-                  <label htmlFor="state" className="block text-sm font-medium text-gray-700">
+                  <label htmlFor="state" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                     State
                   </label>
                   <input
@@ -255,16 +336,21 @@ export default function SignupPage() {
                         value: /^[A-Z]{2}$/,
                         message: "Use 2-letter state code",
                       },
+                      validate: {
+                        validState: (value) => {
+                          return VALID_US_STATES.includes(value.toUpperCase()) || "Invalid state code";
+                        },
+                      },
                     })}
                     type="text"
                     placeholder="CA"
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                   />
-                  {errors.state && <p className="mt-1 text-sm text-red-600">{errors.state.message}</p>}
+                  {errors.state && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.state.message}</p>}
                 </div>
 
                 <div className="col-span-2">
-                  <label htmlFor="zipCode" className="block text-sm font-medium text-gray-700">
+                  <label htmlFor="zipCode" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                     ZIP Code
                   </label>
                   <input
@@ -277,17 +363,17 @@ export default function SignupPage() {
                     })}
                     type="text"
                     placeholder="12345"
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                   />
-                  {errors.zipCode && <p className="mt-1 text-sm text-red-600">{errors.zipCode.message}</p>}
+                  {errors.zipCode && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.zipCode.message}</p>}
                 </div>
               </div>
             </div>
           )}
 
           {error && (
-            <div className="rounded-md bg-red-50 p-4">
-              <p className="text-sm text-red-800">{error}</p>
+            <div className="rounded-md bg-red-50 dark:bg-red-900 p-4">
+              <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
             </div>
           )}
 
@@ -296,7 +382,7 @@ export default function SignupPage() {
               <button
                 type="button"
                 onClick={prevStep}
-                className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
                 Previous
               </button>
@@ -322,9 +408,9 @@ export default function SignupPage() {
           </div>
         </form>
 
-        <p className="text-center text-sm text-gray-600">
+        <p className="text-center text-sm text-gray-600 dark:text-gray-400">
           Already have an account?{" "}
-          <Link href="/login" className="font-medium text-blue-600 hover:text-blue-500">
+          <Link href="/login" className="font-medium text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300">
             Sign in
           </Link>
         </p>

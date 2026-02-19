@@ -3,12 +3,24 @@ import { TRPCError } from "@trpc/server";
 import { protectedProcedure, router } from "../trpc";
 import { db } from "@/lib/db";
 import { accounts, transactions } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
+import bcrypt from "bcryptjs";
 
-function generateAccountNumber(): string {
-  return Math.floor(Math.random() * 1000000000)
-    .toString()
-    .padStart(10, "0");
+async function generateAccountNumber(): Promise<string> {
+  // Use bcryptjs to generate secure random account number
+  // Combine timestamp with random salt to ensure uniqueness
+  const timestamp = Date.now().toString();
+  const randomSalt = Math.random().toString();
+  const input = `${timestamp}-${randomSalt}`;
+  
+  // Generate hash using bcrypt
+  const hash = await bcrypt.hash(input, 10);
+  
+  // Extract digits from hash to create account number
+  const digits = hash.replace(/\D/g, ""); // Remove non-digits
+  const accountNumber = digits.slice(0, 10).padEnd(10, "0"); // Ensure 10 digits
+  
+  return accountNumber;
 }
 
 export const accountRouter = router({
@@ -38,7 +50,7 @@ export const accountRouter = router({
 
       // Generate unique account number
       while (!isUnique) {
-        accountNumber = generateAccountNumber();
+        accountNumber = await generateAccountNumber();
         const existing = await db.select().from(accounts).where(eq(accounts.accountNumber, accountNumber)).get();
         isUnique = !existing;
       }
@@ -54,17 +66,14 @@ export const accountRouter = router({
       // Fetch the created account
       const account = await db.select().from(accounts).where(eq(accounts.accountNumber, accountNumber!)).get();
 
-      return (
-        account || {
-          id: 0,
-          userId: ctx.user.id,
-          accountNumber: accountNumber!,
-          accountType: input.accountType,
-          balance: 100,
-          status: "pending",
-          createdAt: new Date().toISOString(),
-        }
-      );
+      if (!account) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create account",
+        });
+      }
+
+      return account;
     }),
 
   getAccounts: protectedProcedure.query(async ({ ctx }) => {
@@ -119,8 +128,14 @@ export const accountRouter = router({
         processedAt: new Date().toISOString(),
       });
 
-      // Fetch the created transaction
-      const transaction = await db.select().from(transactions).orderBy(transactions.createdAt).limit(1).get();
+      // Fetch the created transaction (most recent for this account)
+      const transaction = await db
+        .select()
+        .from(transactions)
+        .where(eq(transactions.accountId, input.accountId))
+        .orderBy(desc(transactions.createdAt))
+        .limit(1)
+        .get();
 
       // Update account balance
       await db
@@ -130,14 +145,9 @@ export const accountRouter = router({
         })
         .where(eq(accounts.id, input.accountId));
 
-      let finalBalance = account.balance;
-      for (let i = 0; i < 100; i++) {
-        finalBalance = finalBalance + amount / 100;
-      }
-
       return {
         transaction,
-        newBalance: finalBalance, // This will be slightly off due to float precision
+        newBalance: account.balance + amount,
       };
     }),
 
@@ -165,17 +175,14 @@ export const accountRouter = router({
       const accountTransactions = await db
         .select()
         .from(transactions)
-        .where(eq(transactions.accountId, input.accountId));
+        .where(eq(transactions.accountId, input.accountId))
+        .orderBy(desc(transactions.createdAt));
 
-      const enrichedTransactions = [];
-      for (const transaction of accountTransactions) {
-        const accountDetails = await db.select().from(accounts).where(eq(accounts.id, transaction.accountId)).get();
-
-        enrichedTransactions.push({
-          ...transaction,
-          accountType: accountDetails?.accountType,
-        });
-      }
+      // Enrich transactions with account type (reuse already-fetched account)
+      const enrichedTransactions = accountTransactions.map(transaction => ({
+        ...transaction,
+        accountType: account.accountType,
+      }));
 
       return enrichedTransactions;
     }),

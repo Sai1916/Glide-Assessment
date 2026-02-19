@@ -7,6 +7,11 @@ import { db } from "@/lib/db";
 import { users, sessions } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
+// SSN hashing utility using bcryptjs
+const hashSSN = async (ssn: string): Promise<string> => {
+  return await bcrypt.hash(ssn, 10);
+};
+
 export const authRouter = router({
   signup: publicProcedure
     .input(
@@ -35,10 +40,12 @@ export const authRouter = router({
       }
 
       const hashedPassword = await bcrypt.hash(input.password, 10);
+      const hashedSSN = await hashSSN(input.ssn);
 
       await db.insert(users).values({
         ...input,
         password: hashedPassword,
+        ssn: hashedSSN,
       });
 
       // Fetch the created user
@@ -58,6 +65,9 @@ export const authRouter = router({
 
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7);
+
+      // Invalidate any existing sessions for this user (only one active session allowed)
+      await db.delete(sessions).where(eq(sessions.userId, user.id));
 
       await db.insert(sessions).values({
         userId: user.id,
@@ -108,6 +118,9 @@ export const authRouter = router({
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7);
 
+      // Invalidate any existing sessions for this user (only one active session allowed)
+      await db.delete(sessions).where(eq(sessions.userId, user.id));
+
       await db.insert(sessions).values({
         userId: user.id,
         token,
@@ -138,6 +151,15 @@ export const authRouter = router({
       }
       if (token) {
         await db.delete(sessions).where(eq(sessions.token, token));
+        
+        // Verify session was deleted
+        const remainingSession = await db.select().from(sessions).where(eq(sessions.token, token)).get();
+        if (remainingSession) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to logout",
+          });
+        }
       }
     }
 
